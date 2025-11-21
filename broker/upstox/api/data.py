@@ -66,8 +66,11 @@ class BrokerData:
             '4h': {'unit': 'hours', 'interval': '4'},
             # Days/Weeks/Months - v3 supports interval 1 only
             'D': {'unit': 'days', 'interval': '1'},
+            '1d': {'unit': 'days', 'interval': '1'},  # Alias for D
             'W': {'unit': 'weeks', 'interval': '1'},
-            'M': {'unit': 'months', 'interval': '1'}
+            '1wk': {'unit': 'weeks', 'interval': '1'}, # Alias for W
+            'M': {'unit': 'months', 'interval': '1'},
+            '1mo': {'unit': 'months', 'interval': '1'} # Alias for M
         }
 
     def _get_instrument_key(self, symbol: str, exchange: str) -> str:
