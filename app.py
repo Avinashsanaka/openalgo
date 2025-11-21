@@ -42,6 +42,7 @@ from blueprints.telegram import telegram_bp  # Import the telegram blueprint
 from blueprints.security import security_bp  # Import the security blueprint
 from blueprints.sandbox import sandbox_bp  # Import the sandbox blueprint
 from blueprints.playground import playground_bp  # Import the API playground blueprint
+from blueprints.screener import screener_bp  # Import the screener blueprint
 from services.telegram_bot_service import telegram_bot_service
 from database.telegram_db import get_bot_config
 
@@ -184,6 +185,7 @@ def create_app():
     app.register_blueprint(security_bp)  # Register Security blueprint
     app.register_blueprint(sandbox_bp)  # Register Sandbox blueprint
     app.register_blueprint(playground_bp)  # Register API playground blueprint
+    app.register_blueprint(screener_bp)  # Register Screener blueprint
 
 
     # Exempt webhook endpoints from CSRF protection after app initialization
@@ -488,4 +490,4 @@ if __name__ == '__main__':
         url = f"http://{host_ip}:{port}"
         log_startup_banner(logger, "OpenAlgo is running!", url)
 
-    socketio.run(app, host=host_ip, port=port, debug=debug)
+    socketio.run(app, host=host_ip, port=port, debug=debug, allow_unsafe_werkzeug=True)
