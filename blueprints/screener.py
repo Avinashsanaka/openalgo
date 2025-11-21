@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, session, request, jsonify
 from services.history_service import get_history
 from database.auth_db import get_auth_token, get_feed_token
+from database.symbol import enhanced_search_symbols
 import pandas as pd
 import datetime
 from utils.logging import get_logger
@@ -37,9 +38,23 @@ def scan_vbl():
              return jsonify({'status': 'error', 'message': 'Auth token not found'}), 401
 
         # Parameters for VBL
-        symbol = "VBL-EQ" # Assuming standard NSE symbol format
+        search_symbol = "VBL"
         exchange = "NSE"
         interval = "1d" # Daily candles
+
+        # Resolve symbol
+        results = enhanced_search_symbols(search_symbol, exchange)
+        symbol_info = None
+        for res in results:
+            if res.symbol.endswith('-EQ') or res.instrumenttype == 'EQ':
+                symbol_info = res
+                break
+
+        if not symbol_info:
+             # Fallback if not found in DB (though it should be there)
+             symbol = "VBL-EQ"
+        else:
+             symbol = symbol_info.symbol
 
         # Calculate dates
         end_date = datetime.datetime.now()
@@ -72,10 +87,8 @@ def scan_vbl():
 
         # Check if 'close' column exists
         if 'close' not in df.columns:
-             # Try 'Close' or 'c' depending on broker data format, but typically it should be 'close' if normalized.
-             # Let's inspect what we have if it fails, but standardizing on lowercase 'close' is best if service does it.
-             # The history_service returns what broker returns.
-             pass
+             logger.error(f"Missing 'close' column in response data. Columns: {df.columns}")
+             return jsonify({'status': 'error', 'message': 'Invalid data format received from broker'}), 500
 
         # Ensure numeric
         df['close'] = pd.to_numeric(df['close'])
