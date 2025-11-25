@@ -43,6 +43,7 @@ from blueprints.security import security_bp  # Import the security blueprint
 from blueprints.sandbox import sandbox_bp  # Import the sandbox blueprint
 from blueprints.playground import playground_bp  # Import the API playground blueprint
 from blueprints.screener import screener_bp  # Import the screener blueprint
+from blueprints.management import management_bp  # Import the management blueprint
 from services.telegram_bot_service import telegram_bot_service
 from database.telegram_db import get_bot_config
 
@@ -60,6 +61,7 @@ from database.latency_db import init_latency_db as ensure_latency_tables_exists
 from database.strategy_db import init_db as ensure_strategy_tables_exists
 from database.sandbox_db import init_db as ensure_sandbox_tables_exists
 from database.action_center_db import init_db as ensure_action_center_tables_exists
+from database.management_db import init_db as ensure_management_tables_exists
 
 from utils.plugin_loader import load_broker_auth_functions
 
@@ -186,6 +188,7 @@ def create_app():
     app.register_blueprint(sandbox_bp)  # Register Sandbox blueprint
     app.register_blueprint(playground_bp)  # Register API playground blueprint
     app.register_blueprint(screener_bp)  # Register Screener blueprint
+    app.register_blueprint(management_bp)  # Register Management blueprint
 
 
     # Exempt webhook endpoints from CSRF protection after app initialization
@@ -347,6 +350,7 @@ def setup_environment(app):
             ('Strategy DB', ensure_strategy_tables_exists),
             ('Sandbox DB', ensure_sandbox_tables_exists),
             ('Action Center DB', ensure_action_center_tables_exists),
+            ('Management DB', ensure_management_tables_exists),
         ]
 
         db_init_start = time.time()
@@ -379,6 +383,10 @@ app = create_app()
 
 # Explicitly call the setup environment function
 setup_environment(app)
+
+# Start Management Service
+from services.management_service import start_management_service
+start_management_service()
 
 # Auto-start execution engine and squareoff scheduler if in analyzer mode (parallel startup)
 with app.app_context():

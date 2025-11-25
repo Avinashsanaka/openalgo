@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto p-4">
+    <h1 class="text-2xl font-bold mb-4">Position Management</h1>
+
+    <div class="card bg-base-100 shadow-xl">
+        <div class="card-body">
+            <h2 class="card-title">Open Positions</h2>
+            <div class="overflow-x-auto">
+                <table class="table w-full">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Product</th>
+                            <th>Net Qty</th>
+                            <th>LTP</th>
+                            <th>PnL</th>
+                            <th>Management Rules</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pos in positions %}
+                        <tr>
+                            <td class="font-bold">{{ pos.symbol }}</td>
+                            <td>{{ pos.product }}</td>
+                            <td>{{ pos.netqty }}</td>
+                            <td>{{ pos.lp }}</td>
+                            <td class="{{ 'text-success' if pos.pnl|float > 0 else 'text-error' }}">{{ pos.pnl }}</td>
+                            <td>
+                                {% if pos.rule %}
+                                    <div class="badge badge-info">
+                                        {% if pos.rule.exit_type == 'TOTAL_LOSS' %}
+                                            Max Loss: {{ pos.rule.max_loss }}
+                                        {% elif pos.rule.exit_type == 'CANDLE_CLOSE' %}
+                                            Candle Close
+                                        {% else %}
+                                            Mixed
+                                        {% endif %}
+                                    </div>
+                                {% else %}
+                                    <span class="text-gray-400">None</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if pos.rule %}
+                                    <button class="btn btn-error btn-xs" onclick="deleteRule({{ pos.rule.id }})">Remove</button>
+                                {% else %}
+                                    <button class="btn btn-primary btn-xs" onclick="openRuleModal('{{ pos.symbol }}', '{{ pos.exchange }}', '{{ pos.product }}')">Add Rule</button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center">No open positions found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Rule Modal -->
+<dialog id="rule_modal" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg">Add Management Rule for <span id="modal_symbol"></span></h3>
+    <form method="dialog">
+      <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+    </form>
+
+    <div class="form-control w-full max-w-xs mt-4">
+        <label class="label">
+            <span class="label-text">Exit Condition Type</span>
+        </label>
+        <select class="select select-bordered" id="exit_type" onchange="toggleInputs()">
+            <option value="TOTAL_LOSS">Total Loss (Stop Loss)</option>
+            <option value="CANDLE_CLOSE">Candle Close (20 EMA)</option>
+        </select>
+    </div>
+
+    <div id="loss_input_div" class="form-control w-full max-w-xs mt-4">
+        <label class="label">
+            <span class="label-text">Max Loss Amount (Absolute)</span>
+        </label>
+        <input type="number" id="max_loss" placeholder="e.g. 5000" class="input input-bordered w-full max-w-xs" />
+    </div>
+
+    <div id="candle_input_div" class="form-control w-full max-w-xs mt-4 hidden">
+        <p class="text-sm text-gray-500">Exits if price closes below 20 EMA (Long) or above 20 EMA (Short) on 1-minute candle.</p>
+        <div class="alert alert-warning shadow-lg mt-2">
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                <span>Coming Soon: Candle engine integration in progress.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-action">
+      <button class="btn btn-success" onclick="saveRule()">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+let currentSymbol = '';
+let currentExchange = '';
+let currentProduct = '';
+
+function openRuleModal(symbol, exchange, product) {
+    currentSymbol = symbol;
+    currentExchange = exchange;
+    currentProduct = product;
+    document.getElementById('modal_symbol').innerText = symbol;
+    document.getElementById('rule_modal').showModal();
+}
+
+function toggleInputs() {
+    const type = document.getElementById('exit_type').value;
+    if (type === 'TOTAL_LOSS') {
+        document.getElementById('loss_input_div').classList.remove('hidden');
+        document.getElementById('candle_input_div').classList.add('hidden');
+    } else {
+        document.getElementById('loss_input_div').classList.add('hidden');
+        document.getElementById('candle_input_div').classList.remove('hidden');
+    }
+}
+
+async function saveRule() {
+    const type = document.getElementById('exit_type').value;
+    const maxLoss = document.getElementById('max_loss').value;
+
+    const payload = {
+        symbol: currentSymbol,
+        exchange: currentExchange,
+        product: currentProduct,
+        exit_type: type,
+        max_loss: maxLoss,
+        candle_condition: type === 'CANDLE_CLOSE' ? { indicator: 'EMA', period: 20 } : null
+    };
+
+    const res = await fetch("{{ url_for('management_bp.add_rule_route') }}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+        window.location.reload();
+    } else {
+        alert('Failed to save rule');
+    }
+}
+
+async function deleteRule(id) {
+    if(!confirm('Are you sure?')) return;
+
+    const res = await fetch("{{ url_for('management_bp.delete_rule_route') }}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({rule_id: id})
+    });
+
+    if (res.ok) {
+        window.location.reload();
+    } else {
+        alert('Failed to delete rule');
+    }
+}
+</script>
+{% endblock %}
