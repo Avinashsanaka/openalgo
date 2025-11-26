@@ -4,15 +4,9 @@ import sqlite3
 from sqlalchemy import create_engine, text
 from unittest.mock import patch, MagicMock
 
-# Import the module to test
-# We need to do this carefully if we want to patch the engine BEFORE it's used?
-# Actually, we can patch the engine object that the module has already created,
-# or patch where it's used.
-# init_db uses the global 'engine' variable.
-
 class TestManagementDBMigration(unittest.TestCase):
     def setUp(self):
-        self.test_db = 'test_management.db'
+        self.test_db = 'test_management_v2.db'
         if os.path.exists(self.test_db):
             os.remove(self.test_db)
 
@@ -51,14 +45,9 @@ class TestManagementDBMigration(unittest.TestCase):
         with patch('database.management_db.engine', test_engine):
             from database.management_db import init_db
 
-            # Run migration
-            # We mock init_db_with_logging to avoid creating tables via metadata
-            # (which would try to create the full table and might conflict or do nothing if table exists)
-            # However, init_db_with_logging usually does Base.metadata.create_all(bind=engine)
-            # Since table exists, create_all does nothing.
-            # Then the migration logic kicks in.
-
-            with patch('database.db_init_helper.init_db_with_logging') as mock_init:
+            # Mock init_db_with_logging to prevent it from trying to create tables via metadata
+            # which might interfere with our pre-created table test
+            with patch('database.db_init_helper.init_db_with_logging'):
                 init_db()
 
             # Verify columns were added

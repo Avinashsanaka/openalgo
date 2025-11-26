@@ -177,7 +177,8 @@ async function saveRule() {
     if (res.ok) {
         window.location.reload();
     } else {
-        alert('Failed to save rule');
+        const data = await res.json();
+        alert('Failed to save rule: ' + (data.message || 'Unknown error'));
     }
 }
 
@@ -193,7 +194,8 @@ async function deleteRule(id) {
     if (res.ok) {
         window.location.reload();
     } else {
-        alert('Failed to delete rule');
+        const data = await res.json();
+        alert('Failed to delete rule: ' + (data.message || 'Unknown error'));
     }
 }
 </script>
