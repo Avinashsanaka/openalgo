@@ -168,7 +168,7 @@ async function saveRule() {
         candle_condition: type === 'CANDLE_CLOSE' ? { indicator: 'EMA', period: 20 } : null
     };
 
-    const res = await fetch("{{ url_for('management_bp.add_rule_route') }}", {
+    const res = await fetchWithCSRF("{{ url_for('management_bp.add_rule_route') }}", {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
@@ -178,14 +178,14 @@ async function saveRule() {
         window.location.reload();
     } else {
         const data = await res.json();
-        alert('Failed to save rule: ' + (data.message || 'Unknown error'));
+        showToast('Failed to save rule: ' + (data.message || 'Unknown error'), 'error');
     }
 }
 
 async function deleteRule(id) {
     if(!confirm('Are you sure?')) return;
 
-    const res = await fetch("{{ url_for('management_bp.delete_rule_route') }}", {
+    const res = await fetchWithCSRF("{{ url_for('management_bp.delete_rule_route') }}", {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({rule_id: id})
@@ -195,7 +195,7 @@ async function deleteRule(id) {
         window.location.reload();
     } else {
         const data = await res.json();
-        alert('Failed to delete rule: ' + (data.message || 'Unknown error'));
+        showToast('Failed to delete rule: ' + (data.message || 'Unknown error'), 'error');
     }
 }
 </script>
