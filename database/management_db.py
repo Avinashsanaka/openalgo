@@ -53,6 +53,36 @@ def init_db():
     from database.db_init_helper import init_db_with_logging
     init_db_with_logging(Base, engine, "Management DB", logger)
 
+    # Auto-migration logic for SQLite
+    if 'sqlite' in str(engine.url):
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                # Get existing columns
+                result = conn.execute(text("PRAGMA table_info(management_rules)"))
+                columns = [row[1] for row in result]
+
+                # Add target_profit if missing
+                if 'target_profit' not in columns:
+                    logger.info("Migrating Management DB: Adding target_profit column")
+                    try:
+                        conn.execute(text("ALTER TABLE management_rules ADD COLUMN target_profit FLOAT"))
+                        conn.commit()
+                    except Exception as e:
+                        logger.warning(f"Failed to add target_profit column: {e}")
+
+                # Add is_group_rule if missing
+                if 'is_group_rule' not in columns:
+                    logger.info("Migrating Management DB: Adding is_group_rule column")
+                    try:
+                        conn.execute(text("ALTER TABLE management_rules ADD COLUMN is_group_rule BOOLEAN DEFAULT 0"))
+                        conn.commit()
+                    except Exception as e:
+                        logger.warning(f"Failed to add is_group_rule column: {e}")
+
+        except Exception as e:
+            logger.error(f"Error during Management DB schema verification: {e}")
+
 def get_rules_for_user(user_id):
     return ManagementRule.query.filter_by(user_id=user_id).all()
 
