@@ -38,6 +38,12 @@ class ManagementRule(Base):
     # Total Loss params (e.g., absolute amount)
     max_loss = Column(Float, nullable=True)
 
+    # Target Profit params (e.g., absolute amount)
+    target_profit = Column(Float, nullable=True)
+
+    # Group Rule (Apply to all matching symbols)
+    is_group_rule = Column(Boolean, default=False)
+
     # Status
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now)
@@ -50,7 +56,7 @@ def init_db():
 def get_rules_for_user(user_id):
     return ManagementRule.query.filter_by(user_id=user_id).all()
 
-def add_rule(user_id, symbol, exchange, product, exit_type, candle_condition=None, max_loss=None):
+def add_rule(user_id, symbol, exchange, product, exit_type, candle_condition=None, max_loss=None, target_profit=None, is_group_rule=False):
     rule = ManagementRule(
         user_id=user_id,
         symbol=symbol,
@@ -58,7 +64,9 @@ def add_rule(user_id, symbol, exchange, product, exit_type, candle_condition=Non
         product=product,
         exit_type=exit_type,
         candle_condition=candle_condition,
-        max_loss=max_loss
+        max_loss=max_loss,
+        target_profit=target_profit,
+        is_group_rule=is_group_rule
     )
     db_session.add(rule)
     db_session.commit()

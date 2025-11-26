@@ -26,6 +26,32 @@ def get_net_qty(p):
                 continue
     return 0
 
+def calculate_pnl(pos):
+    """Calculate PnL for a position using cached LTP if available"""
+    # Default to API PnL
+    try:
+        pnl = float(pos.get('pnl', 0))
+    except (ValueError, TypeError):
+        pnl = 0.0
+
+    # Try to calculate more recent PnL using ZMQ cache
+    symbol = pos.get('symbol')
+    if symbol in ohlcv_cache and 'ltp' in ohlcv_cache[symbol]:
+        ltp = ohlcv_cache[symbol]['ltp']
+        net_qty = get_net_qty(pos)
+
+        if 'netavgprc' in pos:
+            try:
+                avg_price = float(pos['netavgprc'])
+                # Basic PnL calculation
+                if net_qty > 0: # Long
+                    pnl = (ltp - avg_price) * net_qty
+                elif net_qty < 0: # Short
+                    pnl = (avg_price - ltp) * abs(net_qty)
+            except (ValueError, TypeError):
+                pass
+    return pnl
+
 def start_management_service():
     """Starts the background thread for management service"""
     thread = threading.Thread(target=management_loop, daemon=True)
@@ -139,43 +165,61 @@ def check_rules():
 
                 for rule in user_rules:
                     try:
-                        pos_key = f"{rule.symbol}_{rule.product}"
-                        pos = positions_map.get(pos_key)
+                        # --- Group Rule Logic ---
+                        if rule.is_group_rule:
+                            matching_positions = []
+                            group_pnl = 0.0
 
-                        if not pos:
-                            continue
+                            # Iterate all positions to find matches (prefix match on symbol)
+                            for p_key, p_data in positions_map.items():
+                                # Check matching criteria: Symbol prefix AND Product
+                                if p_data['symbol'].startswith(rule.symbol) and p_data['product'] == rule.product:
+                                    qty = get_net_qty(p_data)
+                                    if qty != 0:
+                                        matching_positions.append(p_data)
+                                        group_pnl += calculate_pnl(p_data)
 
-                        net_qty = get_net_qty(pos)
-                        if net_qty == 0:
-                            # Position closed
-                            continue
+                            if not matching_positions:
+                                continue
 
-                        # Check Total Loss
-                        if rule.exit_type in ['TOTAL_LOSS', 'BOTH'] and rule.max_loss:
-                            # Preferred: Calculate PnL using cached real-time LTP if available
-                            # This allows for faster reaction than waiting for API PnL updates
-                            pnl = float(pos.get('pnl', 0))
+                            # Check Target Profit
+                            if rule.target_profit and group_pnl >= rule.target_profit:
+                                logger.info(f"Group Target Profit Triggered for {rule.symbol}: PnL {group_pnl} >= {rule.target_profit}")
+                                for pos in matching_positions:
+                                    execute_exit(rule, pos, api_key, f"Group Target Profit: {group_pnl}")
 
-                            if rule.symbol in ohlcv_cache and 'ltp' in ohlcv_cache[rule.symbol]:
-                                ltp = ohlcv_cache[rule.symbol]['ltp']
+                            # Check Max Loss (Combined)
+                            elif rule.max_loss and group_pnl <= -abs(rule.max_loss):
+                                logger.info(f"Group Max Loss Triggered for {rule.symbol}: PnL {group_pnl} <= -{rule.max_loss}")
+                                for pos in matching_positions:
+                                    execute_exit(rule, pos, api_key, f"Group Max Loss: {group_pnl}")
 
-                                # Standard PnL = (LTP - BuyAvg) * Qty for Long
-                                # For simplicity, we take the API's PnL and adjust for LTP change?
-                                # Or re-calculate: (LTP - AvgPrice) * Qty
-                                # We need avg price. 'netavgprc' is usually available.
-                                if 'netavgprc' in pos:
-                                    avg_price = float(pos['netavgprc'])
-                                    multiplier = 1 # Multiplier for F&O not handled here, assuming 1 or equity
+                        # --- Individual Rule Logic ---
+                        else:
+                            pos_key = f"{rule.symbol}_{rule.product}"
+                            pos = positions_map.get(pos_key)
 
-                                    if net_qty > 0: # Long
-                                        pnl = (ltp - avg_price) * net_qty
-                                    elif net_qty < 0: # Short
-                                        pnl = (avg_price - ltp) * abs(net_qty)
+                            if not pos:
+                                continue
 
-                            # If PnL is negative and absolute value > max_loss (i.e. pnl < -max_loss)
-                            if pnl < 0 and abs(pnl) >= rule.max_loss:
-                                logger.info(f"Total Loss Triggered for {rule.symbol}: PnL {pnl} <= -{rule.max_loss}")
-                                execute_exit(rule, pos, api_key, "Max Loss Triggered")
+                            net_qty = get_net_qty(pos)
+                            if net_qty == 0:
+                                continue
+
+                            # Calculate PnL
+                            pnl = calculate_pnl(pos)
+
+                            # Check Target Profit (Individual)
+                            if rule.target_profit and pnl >= rule.target_profit:
+                                logger.info(f"Target Profit Triggered for {rule.symbol}: PnL {pnl} >= {rule.target_profit}")
+                                execute_exit(rule, pos, api_key, "Target Profit Triggered")
+
+                            # Check Total Loss (Individual)
+                            elif rule.exit_type in ['TOTAL_LOSS', 'BOTH'] and rule.max_loss:
+                                # If PnL is negative and absolute value > max_loss
+                                if pnl < 0 and abs(pnl) >= rule.max_loss:
+                                    logger.info(f"Total Loss Triggered for {rule.symbol}: PnL {pnl} <= -{rule.max_loss}")
+                                    execute_exit(rule, pos, api_key, "Max Loss Triggered")
 
                         # Check Candle Close
                         if rule.exit_type in ['CANDLE_CLOSE', 'BOTH']:

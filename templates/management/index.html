@@ -31,12 +31,18 @@
                             <td>
                                 {% if pos.rule %}
                                     <div class="badge badge-info">
+                                        {% if pos.rule.is_group_rule %}
+                                            <span class="font-bold text-warning mr-1">[G]</span>
+                                        {% endif %}
+
                                         {% if pos.rule.exit_type == 'TOTAL_LOSS' %}
-                                            Max Loss: {{ pos.rule.max_loss }}
+                                            Loss: {{ pos.rule.max_loss }}
                                         {% elif pos.rule.exit_type == 'CANDLE_CLOSE' %}
                                             Candle Close
-                                        {% else %}
-                                            Mixed
+                                        {% endif %}
+
+                                        {% if pos.rule.target_profit %}
+                                            | Target: {{ pos.rule.target_profit }}
                                         {% endif %}
                                     </div>
                                 {% else %}
@@ -88,6 +94,23 @@
         <input type="number" id="max_loss" placeholder="e.g. 5000" class="input input-bordered w-full max-w-xs" />
     </div>
 
+    <div id="target_input_div" class="form-control w-full max-w-xs mt-4">
+        <label class="label">
+            <span class="label-text">Target Profit Amount</span>
+        </label>
+        <input type="number" id="target_profit" placeholder="e.g. 10000" class="input input-bordered w-full max-w-xs" />
+    </div>
+
+    <div class="form-control w-full max-w-xs mt-4">
+        <label class="label cursor-pointer">
+            <span class="label-text">Apply to Symbol Group (Underlying)</span>
+            <input type="checkbox" id="is_group_rule" class="checkbox checkbox-primary" />
+        </label>
+        <label class="label">
+            <span class="label-text-alt text-gray-500">Matches all positions starting with symbol (e.g. TCS*)</span>
+        </label>
+    </div>
+
     <div id="candle_input_div" class="form-control w-full max-w-xs mt-4 hidden">
         <p class="text-sm text-gray-500">Exits if price closes below 20 EMA (Long) or above 20 EMA (Short) on 1-minute candle.</p>
         <div class="alert alert-warning shadow-lg mt-2">
@@ -131,6 +154,8 @@ function toggleInputs() {
 async function saveRule() {
     const type = document.getElementById('exit_type').value;
     const maxLoss = document.getElementById('max_loss').value;
+    const targetProfit = document.getElementById('target_profit').value;
+    const isGroupRule = document.getElementById('is_group_rule').checked;
 
     const payload = {
         symbol: currentSymbol,
@@ -138,6 +163,8 @@ async function saveRule() {
         product: currentProduct,
         exit_type: type,
         max_loss: maxLoss,
+        target_profit: targetProfit,
+        is_group_rule: isGroupRule,
         candle_condition: type === 'CANDLE_CLOSE' ? { indicator: 'EMA', period: 20 } : null
     };
 
