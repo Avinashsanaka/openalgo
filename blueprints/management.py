@@ -25,7 +25,29 @@ def index():
             success, response, _ = get_positionbook_with_auth(auth_token, broker)
             if success:
                 # Filter for open positions (netqty != 0)
-                positions = [p for p in response.get('data', []) if int(p.get('netqty', 0)) != 0]
+                # Normalize netqty to ensure it exists for template
+                def get_net_qty(p):
+                    for key in ['quantity', 'netqty', 'net_qty', 'qty']:
+                        if key in p:
+                            try:
+                                return float(p[key])
+                            except (ValueError, TypeError):
+                                continue
+                    return 0
+
+                filtered_positions = []
+                for p in response.get('data', []):
+                    qty = get_net_qty(p)
+                    if qty != 0:
+                        p['netqty'] = qty  # Ensure template has access to netqty
+                        filtered_positions.append(p)
+                positions = filtered_positions
+            else:
+                logger.error(f"Failed to fetch positions for {username}: {response}")
+        else:
+            logger.warning(f"No auth token found for {username}")
+    else:
+        logger.warning(f"No broker in session for {username}")
 
     # Fetch Rules
     rules = get_rules_for_user(username)
