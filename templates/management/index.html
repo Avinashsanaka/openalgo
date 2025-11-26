@@ -30,11 +30,18 @@
                             <td class="{{ 'text-success' if pos.pnl|float > 0 else 'text-error' }}">{{ pos.pnl }}</td>
                             <td>
                                 {% if pos.rule %}
-                                    <div class="badge badge-info">
-                                        {% if pos.rule.is_group_rule %}
-                                            <span class="font-bold text-warning mr-1">[G]</span>
+                                    <div class="badge {{ 'badge-info' if pos.rule.is_active else 'badge-ghost' }} gap-2 h-auto py-1">
+                                        {% if pos.rule.is_active %}
+                                            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Active"></span>
+                                        {% else %}
+                                            <span class="text-xs font-mono">[Inactive]</span>
                                         {% endif %}
 
+                                        {% if pos.rule.is_group_rule %}
+                                            <span class="font-bold text-warning" title="Group Rule">[G]</span>
+                                        {% endif %}
+
+                                        <span>
                                         {% if pos.rule.exit_type == 'TOTAL_LOSS' %}
                                             Loss: {{ pos.rule.max_loss }}
                                         {% elif pos.rule.exit_type == 'CANDLE_CLOSE' %}
@@ -42,11 +49,12 @@
                                         {% endif %}
 
                                         {% if pos.rule.target_profit %}
-                                            | Target: {{ pos.rule.target_profit }}
+                                            {% if pos.rule.exit_type != 'NONE' %}|{% endif %} Target: {{ pos.rule.target_profit }}
                                         {% endif %}
+                                        </span>
                                     </div>
                                 {% else %}
-                                    <span class="text-gray-400">None</span>
+                                    <span class="text-gray-400 text-sm">None</span>
                                 {% endif %}
                             </td>
                             <td>
