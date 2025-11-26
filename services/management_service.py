@@ -16,6 +16,16 @@ logger = get_logger(__name__)
 # Cache for OHLCV data: {symbol: DataFrame}
 ohlcv_cache = {}
 
+def get_net_qty(p):
+    """Helper to safely get net quantity from position dictionary"""
+    for key in ['quantity', 'netqty', 'net_qty', 'qty']:
+        if key in p:
+            try:
+                return float(p[key])
+            except (ValueError, TypeError):
+                continue
+    return 0
+
 def start_management_service():
     """Starts the background thread for management service"""
     thread = threading.Thread(target=management_loop, daemon=True)
@@ -132,7 +142,11 @@ def check_rules():
                         pos_key = f"{rule.symbol}_{rule.product}"
                         pos = positions_map.get(pos_key)
 
-                        if not pos or int(pos['netqty']) == 0:
+                        if not pos:
+                            continue
+
+                        net_qty = get_net_qty(pos)
+                        if net_qty == 0:
                             # Position closed
                             continue
 
@@ -140,11 +154,10 @@ def check_rules():
                         if rule.exit_type in ['TOTAL_LOSS', 'BOTH'] and rule.max_loss:
                             # Preferred: Calculate PnL using cached real-time LTP if available
                             # This allows for faster reaction than waiting for API PnL updates
-                            pnl = float(pos['pnl'])
+                            pnl = float(pos.get('pnl', 0))
 
                             if rule.symbol in ohlcv_cache and 'ltp' in ohlcv_cache[rule.symbol]:
                                 ltp = ohlcv_cache[rule.symbol]['ltp']
-                                net_qty = int(pos['netqty'])
 
                                 # Standard PnL = (LTP - BuyAvg) * Qty for Long
                                 # For simplicity, we take the API's PnL and adjust for LTP change?
@@ -187,8 +200,9 @@ def check_rules():
 def execute_exit(rule, position, api_key, reason):
     """Place exit order"""
     try:
-        qty = abs(int(position['netqty']))
-        action = 'SELL' if int(position['netqty']) > 0 else 'BUY'
+        net_qty = get_net_qty(position)
+        qty = abs(int(net_qty))
+        action = 'SELL' if net_qty > 0 else 'BUY'
 
         payload = {
             'apikey': api_key,
