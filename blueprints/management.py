@@ -51,12 +51,34 @@ def index():
 
     # Fetch Rules
     rules = get_rules_for_user(username)
-    rules_map = {(r.symbol, r.product): r for r in rules}
+
+    # Separate exact rules and group rules for smarter matching
+    exact_rules = {}
+    group_rules = []
+
+    for r in rules:
+        if r.is_group_rule:
+            group_rules.append(r)
+        # We also store group rules in exact_rules for direct lookup if symbols match exactly
+        exact_rules[(r.symbol, r.product)] = r
 
     # Merge rules with positions
     merged_positions = []
     for p in positions:
-        rule = rules_map.get((p['symbol'], p['product']))
+        # 1. Try exact match first
+        rule = exact_rules.get((p['symbol'], p['product']))
+
+        # 2. If no exact match, look for applicable group rule
+        if not rule:
+            for gr in group_rules:
+                # Check if position starts with rule symbol (Prefix Match) AND Product matches
+                if p['symbol'].startswith(gr.symbol) and p['product'] == gr.product:
+                    rule = gr
+                    # If we find a match, use it.
+                    # Note: If multiple group rules match, this picks the first one.
+                    # Ideally, specific rules should take precedence, which exact_rules handles.
+                    break
+
         p['rule'] = rule
         merged_positions.append(p)
 
