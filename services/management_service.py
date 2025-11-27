@@ -3,7 +3,8 @@ import time
 import json
 import zmq
 import pandas as pd
-import datetime
+from datetime import datetime, time as dtime
+import pytz
 from database.management_db import ManagementRule, db_session, delete_rule
 from services.positionbook_service import get_positionbook
 from services.place_order_service import place_order
@@ -13,8 +14,28 @@ import os
 
 logger = get_logger(__name__)
 
-# Cache for OHLCV data: {symbol: DataFrame}
+# Cache for OHLCV data: {symbol: {ltp, open, high, low, close, volume}}
 ohlcv_cache = {}
+
+def is_market_open():
+    """Check if current time is within Indian Market hours (09:15 - 15:30 IST)"""
+    # Note: This hardcodes IST market hours. Future versions should support configurable hours/timezones.
+    try:
+        tz = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(tz)
+
+        # Weekends (5=Sat, 6=Sun)
+        if now.weekday() > 4:
+            return False
+
+        current_time = now.time()
+        market_start = dtime(9, 15)
+        market_end = dtime(15, 30)
+
+        return market_start <= current_time <= market_end
+    except Exception as e:
+        logger.error(f"Error checking market hours: {e}")
+        return True # Fail open to avoid blocking if timezone fails
 
 def get_net_qty(p):
     """Helper to safely get net quantity from position dictionary"""
@@ -81,21 +102,19 @@ def management_loop():
             socks = dict(poller.poll(100)) # 100ms timeout
             if socket in socks and socks[socket] == zmq.POLLIN:
                 topic, message = socket.recv_multipart()
-                process_market_data(topic, message)
+
+                # Update cache only during market hours (as per requirement)
+                # Note: We check this here to save processing, though usually cache updates are cheap.
+                if is_market_open():
+                    process_market_data(topic, message)
 
             # 2. Every few seconds, check rules against current state
-            # Note: In a production system, we'd trigger on tick, but for "Total Loss"
-            # and checking multiple positions, a periodic check is simpler for V1.
-            # However, user asked for "candle close". So we need to build candles.
-            # ZMQ from websocket_proxy sends 'market_data' which is usually LTP/Quote.
-            # If we receive OHLCV updates (e.g. from 1m stream), we can use that.
-            # Assuming websocket_proxy sends raw ticks or quotes.
-
-            # For this implementation, I will rely on the `ohlcv_cache` which needs to be populated.
-            # Since real candle construction is complex, I will check "Total Loss" periodically
-            # and "Candle Close" if I detect a new candle (timestamp change).
-
-            check_rules()
+            # Only check rules if market is open
+            if is_market_open():
+                check_rules()
+            else:
+                # Sleep a bit longer if market is closed to save CPU
+                time.sleep(5)
 
         except Exception as e:
             logger.error(f"Error in management loop: {e}")
@@ -109,28 +128,23 @@ def process_market_data(topic, message):
 
         # Topic format: BROKER_EXCHANGE_SYMBOL_MODE or EXCHANGE_SYMBOL_MODE
         parts = topic_str.split('_')
-        # ... parsing logic similar to server.py ...
         # Simplified: grab symbol from parts or data
         symbol = data.get('symbol') or (parts[-2] if len(parts) >= 3 else None)
 
         if not symbol:
             return
 
-        # If data contains OHLC, update cache
-        # Note: This depends on what websocket_proxy sends.
-        # Usually it sends LTP.
-        # If we need candles, we must maintain a time-series.
-        # For simplicity in V1: Update LTP in a simple cache
-        # Real-time candle construction is out of scope for a quick implementation unless provided by proxy.
+        # Update cache with available fields
+        if symbol not in ohlcv_cache:
+            ohlcv_cache[symbol] = {}
 
-        # We'll store the latest tick
-        if 'ltp' in data:
-            if symbol not in ohlcv_cache:
-                ohlcv_cache[symbol] = {'ltp': float(data['ltp']), 'ticks': []}
-            else:
-                ohlcv_cache[symbol]['ltp'] = float(data['ltp'])
-
-            # If we were building candles, we'd append to ticks here.
+        # Standardize and store fields
+        if 'ltp' in data: ohlcv_cache[symbol]['ltp'] = float(data['ltp'])
+        if 'open' in data: ohlcv_cache[symbol]['open'] = float(data['open'])
+        if 'high' in data: ohlcv_cache[symbol]['high'] = float(data['high'])
+        if 'low' in data: ohlcv_cache[symbol]['low'] = float(data['low'])
+        if 'close' in data: ohlcv_cache[symbol]['close'] = float(data['close'])
+        if 'volume' in data: ohlcv_cache[symbol]['volume'] = float(data['volume'])
 
     except Exception as e:
         logger.error(f"Error processing market data: {e}")
