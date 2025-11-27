@@ -96,21 +96,45 @@ def management_loop():
 
     logger.info(f"Management Service connected to ZMQ at {ZMQ_HOST}:{ZMQ_PORT}")
 
+    # State tracking for logging
+    market_was_open = False
+    last_log_time = time.time()
+    tick_count = 0
+
     while True:
         try:
+            current_market_status = is_market_open()
+
+            # Log transitions
+            if current_market_status and not market_was_open:
+                logger.info("Market is now OPEN (IST). Resuming data processing and rule checks.")
+            elif not current_market_status and market_was_open:
+                logger.info("Market is now CLOSED (IST). Pausing processing.")
+
+            market_was_open = current_market_status
+
             # 1. Check ZMQ for market data updates (non-blocking or short timeout)
             socks = dict(poller.poll(100)) # 100ms timeout
             if socket in socks and socks[socket] == zmq.POLLIN:
                 topic, message = socket.recv_multipart()
 
                 # Update cache only during market hours (as per requirement)
-                # Note: We check this here to save processing, though usually cache updates are cheap.
-                if is_market_open():
+                if current_market_status:
                     process_market_data(topic, message)
+                    tick_count += 1
+
+            # Periodic Heartbeat Log (every 60s) during market hours
+            if current_market_status and time.time() - last_log_time > 60:
+                if tick_count > 0:
+                    logger.info(f"Management Service Active: Processed {tick_count} market data ticks in last minute.")
+                else:
+                    logger.info("Management Service Active: No market data received in last minute (waiting for ticks).")
+                tick_count = 0
+                last_log_time = time.time()
 
             # 2. Every few seconds, check rules against current state
             # Only check rules if market is open
-            if is_market_open():
+            if current_market_status:
                 check_rules()
             else:
                 # Sleep a bit longer if market is closed to save CPU
