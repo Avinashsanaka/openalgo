@@ -12,10 +12,19 @@ from database.auth_db import get_auth_token_broker, get_api_key_for_tradingview 
 from utils.logging import get_logger
 import os
 
+# Import WebSocket Proxy instance for direct subscription
+try:
+    from websocket_proxy.app_integration import _websocket_proxy_instance
+except ImportError:
+    _websocket_proxy_instance = None
+
 logger = get_logger(__name__)
 
 # Cache for OHLCV data: {symbol: {ltp, open, high, low, close, volume}}
 ohlcv_cache = {}
+
+# Track subscribed symbols to avoid repeated calls: {user_id_exchange_symbol: timestamp}
+subscribed_symbols = {}
 
 def is_market_open():
     """Check if current time is within Indian Market hours (09:15 - 15:30 IST)"""
@@ -201,6 +210,9 @@ def check_rules():
                 # Key: symbol_product (e.g. INF_MIS)
                 positions_map = {f"{p['symbol']}_{p['product']}": p for p in response['data']}
 
+                # Collect symbols to subscribe
+                symbols_to_subscribe = set()
+
                 for rule in user_rules:
                     try:
                         # --- Group Rule Logic ---
@@ -216,6 +228,10 @@ def check_rules():
                                     if qty != 0:
                                         matching_positions.append(p_data)
                                         group_pnl += calculate_pnl(p_data)
+
+                                        # Collect symbol for subscription
+                                        if 'exchange' in p_data and 'symbol' in p_data:
+                                            symbols_to_subscribe.add((p_data['symbol'], p_data['exchange']))
 
                             if not matching_positions:
                                 continue
@@ -244,6 +260,10 @@ def check_rules():
                             if net_qty == 0:
                                 continue
 
+                            # Collect symbol for subscription
+                            if 'exchange' in pos and 'symbol' in pos:
+                                symbols_to_subscribe.add((pos['symbol'], pos['exchange']))
+
                             # Calculate PnL
                             pnl = calculate_pnl(pos)
 
@@ -269,6 +289,25 @@ def check_rules():
 
                     except Exception as e:
                         logger.error(f"Error checking rule {rule.id}: {e}")
+
+                # Trigger subscriptions for this user
+                if symbols_to_subscribe and _websocket_proxy_instance:
+                    try:
+                        # Check if we have an adapter for this user
+                        if user_id in _websocket_proxy_instance.broker_adapters:
+                            adapter = _websocket_proxy_instance.broker_adapters[user_id]
+                            current_time = time.time()
+
+                            for sym, exc in symbols_to_subscribe:
+                                sub_key = f"{user_id}_{exc}_{sym}"
+                                # Subscribe if not subscribed recently (refresh every 5 mins)
+                                if sub_key not in subscribed_symbols or current_time - subscribed_symbols[sub_key] > 300:
+                                    # Subscribe to Quote mode (2) which includes LTP
+                                    logger.info(f"Management Service subscribing to {sym} ({exc})")
+                                    adapter.subscribe(sym, exc, 2)
+                                    subscribed_symbols[sub_key] = current_time
+                    except Exception as e:
+                        logger.error(f"Error triggering subscription: {e}")
 
             except Exception as e:
                 logger.error(f"Error processing rules for user {user_id}: {e}")
