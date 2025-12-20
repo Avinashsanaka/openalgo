@@ -6,11 +6,21 @@
 
     <div class="card bg-base-100 shadow-xl">
         <div class="card-body">
-            <h2 class="card-title">Open Positions</h2>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="card-title">Open Positions</h2>
+                <button id="group-action-btn" class="btn btn-primary btn-sm hidden" onclick="openGroupModal()">
+                    Create Group Rule (<span id="selected-count">0</span>)
+                </button>
+            </div>
             <div class="overflow-x-auto">
                 <table class="table w-full">
                     <thead>
                         <tr>
+                            <th>
+                                <label>
+                                    <input type="checkbox" class="checkbox" onclick="toggleAll(this)" />
+                                </label>
+                            </th>
                             <th>Symbol</th>
                             <th>Product</th>
                             <th>Net Qty</th>
@@ -23,6 +33,11 @@
                     <tbody>
                         {% for pos in positions %}
                         <tr>
+                            <th>
+                                <label>
+                                    <input type="checkbox" class="checkbox pos-checkbox" value="{{ pos.symbol }}" onchange="updateSelection()" />
+                                </label>
+                            </th>
                             <td class="font-bold">{{ pos.symbol }}</td>
                             <td>{{ pos.product }}</td>
                             <td>{{ pos.netqty }}</td>
@@ -109,7 +124,7 @@
         <input type="number" id="target_profit" placeholder="e.g. 10000" class="input input-bordered w-full max-w-xs" />
     </div>
 
-    <div class="form-control w-full max-w-xs mt-4">
+    <div class="form-control w-full max-w-xs mt-4" id="group_checkbox_div">
         <label class="label cursor-pointer">
             <span class="label-text">Apply to Symbol Group (Underlying)</span>
             <input type="checkbox" id="is_group_rule" class="checkbox checkbox-primary" />
@@ -117,6 +132,11 @@
         <label class="label">
             <span class="label-text-alt text-gray-500">Matches all positions starting with symbol (e.g. TCS*)</span>
         </label>
+    </div>
+
+    <div id="custom_group_info" class="alert alert-info mt-4 hidden">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span>Creating combined rule for <span id="group_count">0</span> selected positions.</span>
     </div>
 
     <div id="candle_input_div" class="form-control w-full max-w-xs mt-4 hidden">
@@ -139,13 +159,55 @@
 let currentSymbol = '';
 let currentExchange = '';
 let currentProduct = '';
+let selectedSymbols = [];
 
 function openRuleModal(symbol, exchange, product) {
     currentSymbol = symbol;
     currentExchange = exchange;
     currentProduct = product;
+    selectedSymbols = []; // Clear selection for individual rule
+
     document.getElementById('modal_symbol').innerText = symbol;
+    document.getElementById('group_checkbox_div').classList.remove('hidden');
+    document.getElementById('custom_group_info').classList.add('hidden');
+    document.getElementById('is_group_rule').checked = false;
     document.getElementById('rule_modal').showModal();
+}
+
+function openGroupModal() {
+    // Collect selected
+    selectedSymbols = Array.from(document.querySelectorAll('.pos-checkbox:checked')).map(cb => cb.value);
+
+    currentSymbol = 'CUSTOM_GROUP';
+    currentExchange = 'NSE'; // Default
+    currentProduct = 'MIS'; // Default
+
+    document.getElementById('modal_symbol').innerText = 'Selected Group';
+    document.getElementById('group_checkbox_div').classList.add('hidden');
+    document.getElementById('custom_group_info').classList.remove('hidden');
+    document.getElementById('group_count').innerText = selectedSymbols.length;
+
+    // Auto-check group rule for visual consistency (though handled by included_positions)
+    document.getElementById('is_group_rule').checked = true;
+
+    document.getElementById('rule_modal').showModal();
+}
+
+function toggleAll(source) {
+    document.querySelectorAll('.pos-checkbox').forEach(cb => {
+        cb.checked = source.checked;
+    });
+    updateSelection();
+}
+
+function updateSelection() {
+    const count = document.querySelectorAll('.pos-checkbox:checked').length;
+    document.getElementById('selected-count').innerText = count;
+    if (count > 1) {
+        document.getElementById('group-action-btn').classList.remove('hidden');
+    } else {
+        document.getElementById('group-action-btn').classList.add('hidden');
+    }
 }
 
 function toggleInputs() {
@@ -163,7 +225,12 @@ async function saveRule() {
     const type = document.getElementById('exit_type').value;
     const maxLoss = document.getElementById('max_loss').value;
     const targetProfit = document.getElementById('target_profit').value;
-    const isGroupRule = document.getElementById('is_group_rule').checked;
+    let isGroupRule = document.getElementById('is_group_rule').checked;
+
+    // If using custom selection, force group rule
+    if (selectedSymbols.length > 0) {
+        isGroupRule = true;
+    }
 
     const payload = {
         symbol: currentSymbol,
@@ -173,6 +240,7 @@ async function saveRule() {
         max_loss: maxLoss,
         target_profit: targetProfit,
         is_group_rule: isGroupRule,
+        included_positions: selectedSymbols.length > 0 ? selectedSymbols : null,
         candle_condition: type === 'CANDLE_CLOSE' ? { indicator: 'EMA', period: 20 } : null
     };
 
