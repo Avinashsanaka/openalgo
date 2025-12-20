@@ -345,9 +345,9 @@ def execute_exit(rule, position, api_key, reason):
 
         payload = {
             'apikey': api_key,
-            'symbol': rule.symbol,
-            'exchange': rule.exchange,
-            'product': rule.product,
+            'symbol': position.get('symbol', rule.symbol),
+            'exchange': position.get('exchange', rule.exchange),
+            'product': position.get('product', rule.product),
             'quantity': str(qty),
             'disclosed_quantity': '0',
             'price': '0',
@@ -357,7 +357,7 @@ def execute_exit(rule, position, api_key, reason):
             'tag': 'MANAGEMENT_EXIT'
         }
 
-        logger.info(f"Executing Management Exit for {rule.symbol}: {reason}")
+        logger.info(f"Executing Management Exit for {payload['symbol']} (Rule: {rule.symbol}): {reason}")
         place_order(payload)
 
         # Deactivate rule immediately to prevent duplicate orders
