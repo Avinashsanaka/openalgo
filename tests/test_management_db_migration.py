@@ -57,6 +57,7 @@ class TestManagementDBMigration(unittest.TestCase):
 
                 self.assertIn('target_profit', columns, "target_profit column should have been added")
                 self.assertIn('is_group_rule', columns, "is_group_rule column should have been added")
+                self.assertIn('included_positions', columns, "included_positions column should have been added")
 
 if __name__ == '__main__':
     unittest.main()

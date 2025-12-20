@@ -103,7 +103,15 @@ def add_rule_route():
         target_profit = float(data.get('target_profit')) if data.get('target_profit') else None
         is_group_rule = data.get('is_group_rule', False)
 
-        add_rule(username, symbol, exchange, product, exit_type, candle_condition, max_loss, target_profit, is_group_rule)
+        # Handle custom group positions
+        included_positions = data.get('included_positions')
+        if included_positions:
+            if isinstance(included_positions, list):
+                included_positions = json.dumps(included_positions)
+            elif not isinstance(included_positions, str):
+                included_positions = None # Invalid format
+
+        add_rule(username, symbol, exchange, product, exit_type, candle_condition, max_loss, target_profit, is_group_rule, included_positions)
         return jsonify({'status': 'success'})
     except Exception as e:
         logger.error(f"Error adding rule: {e}")

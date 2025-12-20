@@ -220,10 +220,28 @@ def check_rules():
                             matching_positions = []
                             group_pnl = 0.0
 
-                            # Iterate all positions to find matches (prefix match on symbol)
+                            # Parse custom included list if available
+                            included_list = None
+                            if rule.included_positions:
+                                try:
+                                    included_list = json.loads(rule.included_positions)
+                                except:
+                                    logger.error(f"Failed to parse included_positions for rule {rule.id}")
+
+                            # Iterate all positions to find matches
                             for p_key, p_data in positions_map.items():
-                                # Check matching criteria: Symbol prefix AND Product
-                                if p_data['symbol'].startswith(rule.symbol) and p_data['product'] == rule.product:
+                                is_match = False
+
+                                if included_list:
+                                    # Custom Group: Check if symbol is in the list
+                                    if p_data['symbol'] in included_list:
+                                        is_match = True
+                                else:
+                                    # Default Group: Prefix match on symbol AND Product
+                                    if p_data['symbol'].startswith(rule.symbol) and p_data['product'] == rule.product:
+                                        is_match = True
+
+                                if is_match:
                                     qty = get_net_qty(p_data)
                                     if qty != 0:
                                         matching_positions.append(p_data)

@@ -44,6 +44,10 @@ class ManagementRule(Base):
     # Group Rule (Apply to all matching symbols)
     is_group_rule = Column(Boolean, default=False)
 
+    # Custom Group: List of specific symbols included (JSON)
+    # If set, this overrides the default prefix matching behavior for group rules
+    included_positions = Column(Text, nullable=True)
+
     # Status
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now)
@@ -80,13 +84,22 @@ def init_db():
                     except Exception as e:
                         logger.warning(f"Failed to add is_group_rule column: {e}")
 
+                # Add included_positions if missing
+                if 'included_positions' not in columns:
+                    logger.info("Migrating Management DB: Adding included_positions column")
+                    try:
+                        conn.execute(text("ALTER TABLE management_rules ADD COLUMN included_positions TEXT"))
+                        conn.commit()
+                    except Exception as e:
+                        logger.warning(f"Failed to add included_positions column: {e}")
+
         except Exception as e:
             logger.error(f"Error during Management DB schema verification: {e}")
 
 def get_rules_for_user(user_id):
     return ManagementRule.query.filter_by(user_id=user_id).all()
 
-def add_rule(user_id, symbol, exchange, product, exit_type, candle_condition=None, max_loss=None, target_profit=None, is_group_rule=False):
+def add_rule(user_id, symbol, exchange, product, exit_type, candle_condition=None, max_loss=None, target_profit=None, is_group_rule=False, included_positions=None):
     rule = ManagementRule(
         user_id=user_id,
         symbol=symbol,
@@ -96,7 +109,8 @@ def add_rule(user_id, symbol, exchange, product, exit_type, candle_condition=Non
         candle_condition=candle_condition,
         max_loss=max_loss,
         target_profit=target_profit,
-        is_group_rule=is_group_rule
+        is_group_rule=is_group_rule,
+        included_positions=included_positions
     )
     db_session.add(rule)
     db_session.commit()
